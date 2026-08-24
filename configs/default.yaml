@@ -1,0 +1,64 @@
+# David Agent Harness — declarative config (CLAUDE.md §24).
+#
+# Every value below is the same default the app already uses when this
+# file doesn't exist at all — this file exists to be edited, not because
+# anything breaks without it. Delete a key to fall back to its default,
+# or delete the whole file.
+#
+# Secrets never go here. API keys live in .env (see .env.example) or your
+# OS keychain — never in this file, never in git.
+
+# Which registered provider the manual router starts on. Only matters if
+# `routing.mode` is "manual" (the default) or as the fallback target when
+# auto-routing can't find a capable provider for a turn. If the named
+# provider isn't actually registered (e.g. its CLI isn't logged in), the
+# CLI warns and falls back to the first provider that did register.
+default_model: claude
+
+routing:
+  # manual — always use default_model / whatever `/model` last picked.
+  # auto   — classify each turn's text into vision/reasoning/cheap/coding
+  #          by keyword and pick the first registered, capable provider
+  #          for that category (models/router.py). Never ML.
+  mode: manual
+
+permissions:
+  # safe — dangerous tools (shell.execute, filesystem.write, ...) ask for
+  #        confirmation; everything else runs automatically.
+  # ask  — every tool call asks, even safe ones.
+  # auto — everything runs automatically except the hardcoded blocklist
+  #        (permissions/policies.py) — see that file for exactly what it
+  #        does and doesn't catch before using this in an unattended setup.
+  mode: safe
+
+sandbox:
+  # Registers sandbox.execute (Docker, --network none). Docker itself is
+  # still checked lazily at call time — this only controls whether the
+  # tool is offered to the model at all.
+  enabled: true
+
+memory:
+  # sqlite — persist sessions/messages/tool_calls/model_calls to
+  #          ~/.david-agent/sessions.db (also what the webui dashboard reads).
+  # none   — NullMemoryStore: nothing persisted, nothing written to disk.
+  backend: sqlite
+
+skills:
+  # Discover ~/.claude/skills, ./.claude/skills, ./skills at startup.
+  # false skips discovery entirely — no skill catalog, no LOAD_SKILL: turns.
+  auto_discover: true
+
+mcp:
+  # Connect to configured MCP servers at startup and register their tools.
+  # false skips MCP entirely, even if servers are configured.
+  enabled: true
+
+local_models:
+  # Whether to register the Ollama provider (qwen-local) at all. Registration
+  # itself is always cheap — it never starts or health-checks the Ollama
+  # server; that only happens lazily, on the first turn that actually picks
+  # this provider (CLAUDE.md §16-17). Setting this false skips even the
+  # registration, e.g. on a machine that will never have Ollama installed.
+  enabled: true
+  # Which Ollama model to request. Must already be pulled (`ollama pull <model>`).
+  model: qwen3.5:9b

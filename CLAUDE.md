@@ -28,6 +28,8 @@ Requiere: `claude` CLI logueado (Claude Code), `agy` CLI logueado (Antigravity, 
 
 Comandos dentro de la sesión: `/model [nombre]`, `/route [auto|manual <nombre>]`, `/skills`, `/tools`, `/mode [safe|ask|auto]`, `/sessions`, `/benchmark <prompt>`, `exit`/`quit`.
 
+Config declarativa (`configs/default.yaml`, opcional — el runtime arranca con los mismos defaults sin ella): `default_model`, `routing.mode`, `permissions.mode`, `sandbox.enabled`, `memory.backend`, `skills.auto_discover`, `mcp.enabled`, `local_models.{enabled,model}`. Se puede sobreescribir con `~/.david-agent/config.yaml` (por máquina) o `$DAVID_AGENT_CONFIG=/ruta.yaml` (explícito). Nunca secrets aquí — esos siguen en `.env`.
+
 Tests: `uv sync --group dev && uv run pytest` (69 tests, corre en CI en cada push/PR).
 
 ## Archivos clave
@@ -42,6 +44,7 @@ src/david_agent/
 ├── tools/                   # filesystem, shell, git, sandbox
 ├── mcp/                     # registry + client (SDK oficial) + adapter
 ├── permissions/engine.py    # PermissionEngine (safe/ask/auto + blocklist)
+├── config/loader.py         # config YAML declarativa (§24) — configs/default.yaml + overrides
 ├── memory/sqlite.py         # persistencia de sessions/messages/tool_calls/model_calls
 ├── sandbox/docker.py        # DockerSandbox — aislado, --network none
 ├── benchmark/runner.py      # medición objetiva multi-provider
@@ -54,5 +57,6 @@ src/david_agent/
 - **`--strict-mcp-config` fue un fix real, no cosmético**: sin él, `ClaudeCodeProvider` filtraba el entorno MCP ambiente (Figma/Gmail/etc.) hacia el subproceso. Si se agregan más providers basados en CLI, revisar el mismo tipo de fuga.
 - **Reconexión MCP por llamada**: `MCPClient` abre/cierra conexión en cada `list_tools()`/`call_tool()` — simple pero caro para servidores lentos (el gateway Docker tardó ~25s en frío). Si se agregan más servidores MCP, considerar una sesión persistente.
 - **`ClaudeCodeProvider`/`AntigravityProvider` no soportan streaming** — ambos son `capabilities.streaming=False`; si la UX interactiva importa, valdría la pena investigar si sus CLIs exponen un modo streaming en headless.
-- **Config sigue siendo `.env` + hardcoded, no YAML declarativo** — el spec original (§24) pedía `configs/default.yaml` para routing rules, permisos, etc. Las reglas de auto-routing (`DEFAULT_ROUTING_RULES` en `models/router.py`) y los presets `openai_compatible` (`cli/main.py`) siguen siendo dicts en Python, no config cargable sin tocar código.
-- **Los tests cubren lógica pura, no los providers reales** — `tests/` prueba router/permissions/tools/skills/memory con fakes y `tmp_path`, deliberadamente sin llamar a `claude -p`/`agy -p`/Ollama de verdad (costaría tokens/tiempo y necesitaría login en CI). Esas rutas siguen validándose a mano.
+- **La config YAML (§24) no cubre permisos por-tool** — `permissions.mode` es un solo switch global (`safe`/`ask`/`auto`), no el `shell: ask`/`git_commit: ask` granular que sugería el spec original — `PermissionEngine` en sí solo tiene un `Mode` global, así que exponer eso en YAML sería mentir sobre lo que el runtime realmente hace. Tampoco existe `local_models.max_memory_gb`: nada en el proyecto mide o limita el uso de memoria de Ollama todavía.
+- **Las reglas de auto-routing (`DEFAULT_ROUTING_RULES` en `models/router.py`) y los presets `openai_compatible` (`cli/main.py`) siguen siendo dicts en Python**, no config cargable sin tocar código — quedaron fuera del YAML a propósito, ya que cambiarlos correctamente implica tocar código de todas formas.
+- **Los tests cubren lógica pura, no los providers reales** — `tests/` prueba router/permissions/tools/skills/memory/config con fakes y `tmp_path`, deliberadamente sin llamar a `claude -p`/`agy -p`/Ollama de verdad (costaría tokens/tiempo y necesitaría login en CI). Esas rutas siguen validándose a mano.

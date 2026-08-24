@@ -6,6 +6,8 @@ import sys
 
 from dotenv import load_dotenv
 
+from david_agent.config.loader import load_config
+from david_agent.config.schema import Config, ConfigError
 from david_agent.core.agent import Agent
 from david_agent.core.loop import run_turn
 from david_agent.core.session import Session
@@ -13,6 +15,7 @@ from david_agent.benchmark.runner import run_benchmark
 from david_agent.mcp.adapter import MCPToolAdapter
 from david_agent.mcp.client import MCPClient
 from david_agent.mcp.registry import default_servers
+from david_agent.memory.base import MemoryStore, NullMemoryStore
 from david_agent.memory.sqlite import SQLiteMemoryStore
 from david_agent.models.registry import ModelRegistry
 from david_agent.models.router import ModelRouter
@@ -83,7 +86,7 @@ def build_openai_compatible_providers() -> list[OpenAICompatibleProvider]:
     return providers
 
 
-def build_registry() -> ModelRegistry:
+def build_registry(config: Config) -> ModelRegistry:
     registry = ModelRegistry()
     registry.register(ClaudeCodeProvider(), default=True)
     try:
@@ -92,33 +95,43 @@ def build_registry() -> ModelRegistry:
         print(f"[warn] gemini provider unavailable: {e}", file=sys.stderr)
     # OllamaProvider's __init__ never starts/health-checks the server, so
     # registering it is always cheap — the local model stays off until the
-    # first turn actually asks for it.
-    registry.register(OllamaProvider())
+    # first turn actually asks for it. local_models.enabled skips even that
+    # cheap registration, e.g. on a machine that will never have Ollama.
+    if config.local_models.enabled:
+        registry.register(OllamaProvider(model=config.local_models.model))
     for provider in build_openai_compatible_providers():
         registry.register(provider)
     return registry
 
 
-def build_skill_registry() -> SkillRegistry:
+def build_skill_registry(config: Config) -> SkillRegistry:
     skills = SkillRegistry()
-    skills.discover(default_roots())
+    if config.skills.auto_discover:
+        skills.discover(default_roots())
     return skills
 
 
-def build_tool_registry() -> ToolRegistry:
+def build_tool_registry(config: Config) -> ToolRegistry:
     tools = ToolRegistry()
     for tool_cls in (
         FileSystemReadTool,
         FileSystemListTool,
         FileSystemWriteTool,
         ShellExecuteTool,
-        SandboxExecuteTool,
         GitStatusTool,
         GitDiffTool,
         GitLogTool,
     ):
         tools.register(tool_cls())
+    if config.sandbox.enabled:
+        tools.register(SandboxExecuteTool())
     return tools
+
+
+def build_memory_store(config: Config) -> MemoryStore:
+    if config.memory.backend == "none":
+        return NullMemoryStore()
+    return SQLiteMemoryStore()  # "sqlite" — the only other valid value, enforced by Config.from_dict
 
 
 def build_mcp_tools() -> tuple[list[MCPToolAdapter], int]:
@@ -253,20 +266,43 @@ def main() -> None:
     load_dotenv()  # opt-in providers (openai_compatible) read their keys from here — never committed
 
     try:
-        registry = build_registry()
+        config = load_config()
+    except ConfigError as e:
+        print(f"[error] config: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        registry = build_registry(config)
     except RuntimeError as e:
         print(f"Failed to start: {e}", file=sys.stderr)
         sys.exit(1)
 
-    skills = build_skill_registry()
-    tools = build_tool_registry()
+    skills = build_skill_registry(config)
+    tools = build_tool_registry(config)
     native_tool_count = len(tools.catalog())
-    mcp_tools, mcp_connected = build_mcp_tools()
+    if config.mcp.enabled:
+        mcp_tools, mcp_connected = build_mcp_tools()
+    else:
+        mcp_tools, mcp_connected = [], 0
     for t in mcp_tools:
         tools.register(t)
-    permissions = PermissionEngine()
-    memory = SQLiteMemoryStore()
-    router = ModelRouter(registry, default="claude")
+    permissions = PermissionEngine(mode=Mode(config.permissions.mode))
+    memory = build_memory_store(config)
+
+    # config.default_model is user-editable text — unlike the old hardcoded
+    # "claude" literal (always safely registered, see ClaudeCodeProvider),
+    # it can name a provider that never actually registered (e.g. its CLI
+    # isn't logged in). Same best-effort fallback build_registry() already
+    # uses for individual providers, applied here to the router's starting pick.
+    default_model = config.default_model
+    if default_model not in registry.names():
+        fallback = registry.names()[0]
+        print(f"[warn] configured default_model '{default_model}' is not registered — using '{fallback}'", file=sys.stderr)
+        default_model = fallback
+    router = ModelRouter(registry, default=default_model)
+    if config.routing.mode == "auto":
+        router.set_auto()
+
     agent = Agent(name="default", router=router, skills=skills, tools=tools, permissions=permissions, memory=memory)
     session = Session()
     memory.create_session(session.id, agent.name)
@@ -282,7 +318,8 @@ def main() -> None:
             sandbox="Docker (lazy, sandbox.execute)" if shutil.which("docker") else "unavailable (docker not found)",
         )
     )
-    print(f"session: {session.id}  (persisted to {memory.db_path})")
+    memory_location = memory.db_path if isinstance(memory, SQLiteMemoryStore) else "nowhere (memory.backend: none)"
+    print(f"session: {session.id}  (persisted to {memory_location})")
     print(
         "Commands: /model [name], /route [auto|manual <name>], /skills, /tools, "
         "/mode [name], /sessions, /benchmark <prompt>, exit, quit\n"
