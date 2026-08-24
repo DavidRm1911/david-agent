@@ -79,21 +79,28 @@ def _parse_tool_call(text: str) -> tuple[str, dict] | None:
     return match.group(1), args
 
 
-def _execute_tool(agent: Agent, name: str, args: dict, confirm: ConfirmFn) -> str:
+def _execute_tool(agent: Agent, name: str, args: dict, confirm: ConfirmFn) -> tuple[str, str | None]:
+    """Returns (text shown to the model, error for memory.save_tool_call).
+    The two used to be folded into one string, which meant the error column
+    in tool_calls was always NULL — even for real failures, so the webui
+    dashboard could never distinguish a failed call from a successful one."""
     tool = agent.tools.get(name)
     if tool is None:
-        return f"Unknown tool '{name}'."
+        error = f"Unknown tool '{name}'."
+        return error, error
 
     decision = agent.permissions.decide(tool, args)
     if decision is Decision.BLOCK:
-        return f"Blocked by policy: '{name}' matches a disallowed pattern."
+        error = f"Blocked by policy: '{name}' matches a disallowed pattern."
+        return error, error
     if decision is Decision.ASK and not confirm(name, args):
-        return f"Denied by user: '{name}' was not executed."
+        error = f"Denied by user: '{name}' was not executed."
+        return error, error
 
     result = tool.execute(args)
     if result.error:
-        return f"Error: {result.error}"
-    return result.output
+        return f"Error: {result.error}", result.error
+    return result.output, None
 
 
 def run_turn(
@@ -132,8 +139,8 @@ def run_turn(
                 )
         else:
             name, args = tool_call
-            result_text = _execute_tool(agent, name, args, confirm)
+            result_text, tool_error = _execute_tool(agent, name, args, confirm)
             session.add_user(f"[system] Tool '{name}' result:\n\n{result_text}")
-            agent.memory.save_tool_call(session.id, name, args, result_text, None)
+            agent.memory.save_tool_call(session.id, name, args, result_text, tool_error)
 
     raise AssertionError("unreachable")  # loop always returns within MAX_ITERATIONS attempts
