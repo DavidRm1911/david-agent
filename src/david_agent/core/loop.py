@@ -109,7 +109,11 @@ def run_turn(
     session.add_user(user_input)
     agent.memory.save_message(session.id, "user", user_input)
 
-    provider = agent.router.get_provider()
+    # Resolved once per turn from the user's own text — auto-routing on a
+    # tool-result echo (e.g. "[system] Tool 'x' result: ...") would reclassify
+    # into a different category and silently switch models mid-turn.
+    resolved_model = agent.router.resolve(user_input)
+    provider = agent.router.get_provider(user_input)
     system = _build_system_prompt(agent)
 
     for attempt in range(MAX_ITERATIONS):
@@ -117,7 +121,7 @@ def run_turn(
         session.add_assistant(response.text)
         agent.memory.save_message(session.id, "assistant", response.text)
         agent.memory.save_model_call(
-            session.id, agent.router.resolve(), response.model, response.input_tokens,
+            session.id, resolved_model, response.model, response.input_tokens,
             response.output_tokens, response.cost_usd,
         )
 

@@ -35,6 +35,7 @@ BANNER = """\
 │        DAVID AGENT HARNESS                │
 │                                            │
 │ Model:   {model:<34}│
+│ Routing: {routing:<34}│
 │ Skills:  {skills:<34}│
 │ Tools:   {tools:<34}│
 │ Mode:    {mode:<34}│
@@ -177,6 +178,26 @@ def handle_command(
                 print(f"[error] {e}")
         return True
 
+    if cmd == "/route":
+        if len(parts) == 1:
+            print(f"current: {'auto' if router.is_auto() else 'manual'} ({router.current()})")
+            print("usage: /route auto | /route manual <model>")
+        elif parts[1] == "auto":
+            router.set_auto()
+            print("switched to: auto (rule-based, per-turn — see CLAUDE.md §6)")
+        elif parts[1] == "manual":
+            if len(parts) < 3:
+                print(f"[error] usage: /route manual <model>. available: {', '.join(router.available())}")
+            else:
+                try:
+                    router.set_manual(parts[2])
+                    print(f"switched to: manual ({router.current()})")
+                except KeyError as e:
+                    print(f"[error] {e}")
+        else:
+            print(f"[error] unknown mode '{parts[1]}'. usage: /route auto | /route manual <model>")
+        return True
+
     if cmd == "/skills":
         for s in skills.catalog():
             desc = (s.description[:80] + "…") if len(s.description) > 80 else s.description
@@ -253,6 +274,7 @@ def main() -> None:
     print(
         BANNER.format(
             model=router.current(),
+            routing="auto (rule-based)" if router.is_auto() else "manual",
             skills=f"{skills.count()} discovered",
             tools=f"{native_tool_count} native + {len(mcp_tools)} MCP",
             mode=permissions.mode.value,
@@ -261,7 +283,10 @@ def main() -> None:
         )
     )
     print(f"session: {session.id}  (persisted to {memory.db_path})")
-    print("Commands: /model [name], /skills, /tools, /mode [name], /sessions, /benchmark <prompt>, exit, quit\n")
+    print(
+        "Commands: /model [name], /route [auto|manual <name>], /skills, /tools, "
+        "/mode [name], /sessions, /benchmark <prompt>, exit, quit\n"
+    )
 
     while True:
         try:
