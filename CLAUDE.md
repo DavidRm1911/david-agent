@@ -26,7 +26,9 @@ uv run david-agent
 
 Requiere: `claude` CLI logueado (Claude Code), `agy` CLI logueado (Antigravity, opcional), Ollama instalado (opcional, se auto-arranca al primer uso), Docker corriendo (opcional, para `sandbox.execute`). Nada de esto es obligatorio individualmente — el registro de cada provider/tool es best-effort.
 
-Comandos dentro de la sesión: `/model [nombre]`, `/skills`, `/tools`, `/mode [safe|ask|auto]`, `/sessions`, `/benchmark <prompt>`, `exit`/`quit`.
+Comandos dentro de la sesión: `/model [nombre]`, `/route [auto|manual <nombre>]`, `/skills`, `/tools`, `/mode [safe|ask|auto]`, `/sessions`, `/benchmark <prompt>`, `exit`/`quit`.
+
+Tests: `uv sync --group dev && uv run pytest` (69 tests, corre en CI en cada push/PR).
 
 ## Archivos clave
 
@@ -34,7 +36,7 @@ Comandos dentro de la sesión: `/model [nombre]`, `/skills`, `/tools`, `/mode [s
 src/david_agent/
 ├── core/loop.py           # el Agent Loop — protocolo de texto LOAD_SKILL:/TOOL_CALL:
 ├── core/agent.py           # Agent = configuración (router, skills, tools, permissions, memory)
-├── models/router.py         # ModelRouter — selección manual de provider
+├── models/router.py         # ModelRouter — selección manual y auto (keyword + capability-aware)
 ├── providers/               # anthropic/ google/ local/ openai_compatible/
 ├── skills/registry.py       # discovery + lazy loading de SKILL.md
 ├── tools/                   # filesystem, shell, git, sandbox
@@ -52,4 +54,5 @@ src/david_agent/
 - **`--strict-mcp-config` fue un fix real, no cosmético**: sin él, `ClaudeCodeProvider` filtraba el entorno MCP ambiente (Figma/Gmail/etc.) hacia el subproceso. Si se agregan más providers basados en CLI, revisar el mismo tipo de fuga.
 - **Reconexión MCP por llamada**: `MCPClient` abre/cierra conexión en cada `list_tools()`/`call_tool()` — simple pero caro para servidores lentos (el gateway Docker tardó ~25s en frío). Si se agregan más servidores MCP, considerar una sesión persistente.
 - **`ClaudeCodeProvider`/`AntigravityProvider` no soportan streaming** — ambos son `capabilities.streaming=False`; si la UX interactiva importa, valdría la pena investigar si sus CLIs exponen un modo streaming en headless.
-- **Sin tests automatizados todavía** — todo lo validado en este proyecto fue con pruebas manuales end-to-end reales (documentadas en el historial de conversación), no hay suite de `pytest`. Antes de escalar el proyecto, vale la pena formalizar al menos los casos ya probados a mano.
+- **Config sigue siendo `.env` + hardcoded, no YAML declarativo** — el spec original (§24) pedía `configs/default.yaml` para routing rules, permisos, etc. Las reglas de auto-routing (`DEFAULT_ROUTING_RULES` en `models/router.py`) y los presets `openai_compatible` (`cli/main.py`) siguen siendo dicts en Python, no config cargable sin tocar código.
+- **Los tests cubren lógica pura, no los providers reales** — `tests/` prueba router/permissions/tools/skills/memory con fakes y `tmp_path`, deliberadamente sin llamar a `claude -p`/`agy -p`/Ollama de verdad (costaría tokens/tiempo y necesitaría login en CI). Esas rutas siguen validándose a mano.
