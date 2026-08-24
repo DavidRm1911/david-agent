@@ -10,6 +10,7 @@ called — same lazy-by-default principle as OllamaProvider.
 from __future__ import annotations
 
 import subprocess
+import uuid
 from pathlib import Path
 
 from david_agent.sandbox.base import Sandbox
@@ -36,11 +37,19 @@ class DockerSandbox(Sandbox):
 
     def run(self, command: str, *, workspace: Path) -> ToolResult:
         workspace = workspace.resolve()
+        # Named explicitly so a timeout can kill it by name — relying on
+        # Docker to notice the client process died and clean up on its own
+        # is not immediate: verified empirically, a killed `docker run`
+        # process left its container `Up` and running for several seconds
+        # afterward before Docker's own disconnect detection caught up.
+        container_name = f"david-agent-sandbox-{uuid.uuid4().hex[:12]}"
         cmd = [
             "docker",
             "run",
             "--rm",
             "-i",
+            "--name",
+            container_name,
             "-v",
             f"{workspace}:/workspace",
             "-w",
@@ -57,6 +66,7 @@ class DockerSandbox(Sandbox):
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=self._timeout)
         except subprocess.TimeoutExpired:
+            subprocess.run(["docker", "kill", container_name], capture_output=True, timeout=10)
             return ToolResult(output="", error=f"sandboxed command timed out after {self._timeout}s")
         except FileNotFoundError:
             return ToolResult(output="", error="docker is not installed or not on PATH")
