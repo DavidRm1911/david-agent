@@ -1,0 +1,22 @@
+[project]
+name = "david-agent"
+version = "0.1.0"
+description = "Model-agnostic agent runtime — the model is a pluggable backend, not the core of the system."
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=2.0.0",
+    "python-dotenv>=1.2.3",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+david-agent = "david_agent.cli.main:main"
+david-agent-gateway = "david_agent.gateway.server:main"
+david-agent-webui = "david_agent.webui.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/david_agent"]

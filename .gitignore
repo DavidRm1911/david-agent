@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+*.db
+
+# OKF descriptor — local only, feeds the portfolio's /graphify pipeline, never committed
+.claude/okf.jsonld
