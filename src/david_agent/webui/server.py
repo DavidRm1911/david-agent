@@ -64,7 +64,7 @@ async function loadSessions() {
   for (const s of data.sessions) {
     const div = document.createElement('div');
     div.className = 'session';
-    div.innerHTML = `<div class="id">${s.id}</div><div class="meta">${s.agent_name} · ${s.created_at}</div>`;
+    div.innerHTML = `<div class="id">${escapeHtml(s.id)}</div><div class="meta">${escapeHtml(s.agent_name)} · ${s.created_at}</div>`;
     div.onclick = () => selectSession(s.id, div);
     el.appendChild(div);
   }
@@ -78,12 +78,12 @@ async function selectSession(id, el) {
   const main = document.getElementById('main');
   let html = '';
   for (const m of data.messages) {
-    html += `<div class="msg ${m.role}"><div class="role">${m.role}</div>${escapeHtml(m.content)}</div>`;
+    html += `<div class="msg ${escapeHtml(m.role)}"><div class="role">${escapeHtml(m.role)}</div>${escapeHtml(m.content)}</div>`;
   }
   html += '<h2>Model calls</h2><table><tr><th>Provider</th><th>Model</th><th>In/Out tok</th><th>Cost</th><th>When</th></tr>';
   for (const c of data.model_calls) {
     const cost = c.cost_usd != null ? '$' + c.cost_usd.toFixed(4) : 'n/a';
-    html += `<tr><td>${c.provider}</td><td>${c.model}</td><td>${c.input_tokens ?? '?'}/${c.output_tokens ?? '?'}</td><td>${cost}</td><td>${c.created_at}</td></tr>`;
+    html += `<tr><td>${escapeHtml(c.provider)}</td><td>${escapeHtml(c.model)}</td><td>${c.input_tokens ?? '?'}/${c.output_tokens ?? '?'}</td><td>${cost}</td><td>${c.created_at}</td></tr>`;
   }
   html += '</table>';
   if (data.tool_calls.length) {
