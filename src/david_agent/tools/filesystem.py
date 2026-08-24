@@ -1,12 +1,16 @@
 """Filesystem tools — read/write/list against the real filesystem the
 process can see. No sandbox yet (Fase 9 adds Docker). Write is flagged
-dangerous; read and list are not.
+dangerous; read and list are not — but all three still refuse known
+credential paths (see SENSITIVE_PATH_PATTERNS in permissions/policies.py),
+checked here as a backstop in case something calls execute() directly,
+bypassing PermissionEngine, which already applies the same check first.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from david_agent.permissions.policies import path_is_sensitive
 from david_agent.tools.base import Tool, ToolResult
 
 MAX_READ_BYTES = 200_000
@@ -21,6 +25,8 @@ class FileSystemReadTool(Tool):
         path = args.get("path")
         if not path:
             return ToolResult(output="", error="missing 'path' argument")
+        if path_is_sensitive(path):
+            return ToolResult(output="", error=f"blocked: '{path}' matches a credential path pattern")
         p = Path(path).expanduser()
         if not p.exists():
             return ToolResult(output="", error=f"'{path}' does not exist")
@@ -37,6 +43,8 @@ class FileSystemListTool(Tool):
 
     def execute(self, args: dict) -> ToolResult:
         path = args.get("path", ".")
+        if path_is_sensitive(path):
+            return ToolResult(output="", error=f"blocked: '{path}' matches a credential path pattern")
         p = Path(path).expanduser()
         if not p.exists() or not p.is_dir():
             return ToolResult(output="", error=f"'{path}' is not a directory")
@@ -54,6 +62,8 @@ class FileSystemWriteTool(Tool):
         content = args.get("content")
         if not path or content is None:
             return ToolResult(output="", error="requires 'path' and 'content' arguments")
+        if path_is_sensitive(path):
+            return ToolResult(output="", error=f"blocked: '{path}' matches a credential path pattern")
         p = Path(path).expanduser()
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content)
