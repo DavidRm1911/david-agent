@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from david_agent.permissions.policies import BLOCKED_COMMAND_PATTERNS, Decision, Mode
+from david_agent.permissions.policies import BLOCKED_COMMAND_PATTERNS, Decision, Mode, normalize_command
 from david_agent.tools.base import Tool
 
 
@@ -19,7 +19,7 @@ class PermissionEngine:
 
     def decide(self, tool: Tool, args: dict) -> Decision:
         command = args.get("command") if isinstance(args, dict) else None
-        if command and any(bad in command for bad in BLOCKED_COMMAND_PATTERNS):
+        if command and any(bad in normalize_command(command) for bad in BLOCKED_COMMAND_PATTERNS):
             return Decision.BLOCK
 
         if self.mode == Mode.AUTO:

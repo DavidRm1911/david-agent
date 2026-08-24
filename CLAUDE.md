@@ -12,7 +12,7 @@ Runtime de agentes de IA agnóstico de modelo. El modelo es un backend intercamb
 - **Router manual** (`/model <nombre>`) — cambia de provider sin tocar el Agent Loop.
 - **25 skills de Claude Code descubiertas automáticamente** con *lazy loading*: el modelo solo ve nombre+descripción; el cuerpo completo (`SKILL.md`) se carga bajo demanda solo si el modelo lo pide.
 - **7 tools nativas** (filesystem read/write/list, shell.execute, sandbox.execute, git status/diff/log) + **tools MCP** vía la SDK oficial (`mcp/`), reutilizando tu `~/.claude.json` — mismo `Tool` interface para nativas y MCP, el loop no distingue.
-- **PermissionEngine** con 3 modos (`safe`/`ask`/`auto`) y un blocklist que nunca se puede saltar (ni en `auto`).
+- **PermissionEngine** con 3 modos (`safe`/`ask`/`auto`) y un blocklist de 4 patrones exactos que nunca se saltan — pero es matching literal, no una defensa general contra comandos destructivos (`x=/; rm -rf $x` o `cd / && rm -rf .` no matchean). En modo `auto`, este blocklist es la única protección real para `shell.execute`.
 - **Memoria persistente en SQLite** (`~/.david-agent/sessions.db`) — sessions, messages, model_calls, tool_calls.
 - **Sandbox Docker** (`sandbox.execute`) — contenedor efímero, sin red, solo ve el workspace montado.
 - **Benchmark objetivo** (`/benchmark <prompt>`) — latencia/tokens/coste reales medidos contra todos los modelos, nunca un "quality score" inventado.
