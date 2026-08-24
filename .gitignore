@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .env
 *.db
+.pytest_cache/
 
 # OKF descriptor — local only, feeds the portfolio's /graphify pipeline, never committed
 .claude/okf.jsonld
